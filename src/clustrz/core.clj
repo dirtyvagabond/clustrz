@@ -20,6 +20,7 @@
 (defn clojure? [proc]
   (not (nil? (re-matches #".* clojure\.main .*" (proc :cmd)))))
 
+;; TODO: key off of exit code for error, not stderr
 (defn shout
   "Runs cmd on node and returns the textual result that went to stdout."
   [node cmd]
@@ -183,4 +184,4 @@
   (execs check-oome quartz))
 
 (defn -main []
-  (check-oome-all))
+  (check-oome vot004))

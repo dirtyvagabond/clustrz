@@ -66,11 +66,6 @@
   (let [out (shout node (str "ps --no-header -p " pid))]
     (not (blank? out))))
 
-(comment
-  (defn up? [{:keys [user host pid]}]
-    (let [ps-out (sh "ssh" (str user "@" host) (str "ps --no-header -p " pid))]
-      (not (blank? ps-out)))))
-
 (def down?
   (complement up?))
 
@@ -80,14 +75,14 @@
         t (- (System/currentTimeMillis) start)]
     {:host (node :host) :out out :time t}))
 
+(defn tshouts [nodes cmd]
+  (pmap #(tshout % cmd) nodes))
+
 (defn exec [f node]
   (let [start (System/currentTimeMillis)
         out (f node)
         t (- (System/currentTimeMillis) start)]
     {:host (node :host) :out out :time t}))
-
-(defn tshouts [nodes cmd]
-  (pmap #(tshout % cmd) nodes))
 
 (defn execs [f nodes]
   (doall (pmap #(exec f %) nodes)))
@@ -97,11 +92,11 @@
 
 (defn nput [node key val]
   (mkdir node (str *home* "kvs"))
-  (let [file (str "~/.clustrz/kvs/" key)]
+  (let [file (str "~/.clustrz/kvs/" (str key))]
     (ssh-exec node (str "echo \"" (str val) "\" > " file))))
 
 (defn nget [node key]
-  (let [file (str *home* "kvs/" key)]
+  (let [file (str *home* "kvs/" (str key))]
     (shout node (str "cat " file))))
 
 (defn bash-time
@@ -175,3 +170,4 @@
       (do
         (println (node :host) ": No new oomes... ho hum")
         (log-at node "No new oomes... ho hum")))))
+

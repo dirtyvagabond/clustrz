@@ -8,6 +8,8 @@
 (def *log* (str *home* "node.log"))
 (def *bash-date-format* (java.text.SimpleDateFormat. "EEE MMM d HH:mm:ss z yyyyy"))
 
+(defn now [] (java.util.Date.))
+
 (defn ssh-exec [{:keys [host user]} cmd]
   (sh "ssh" (str user "@" host) cmd))
 
@@ -116,10 +118,14 @@
 (defn get-log [node]
   (shout node (str "cat " *log*)))
 
-(defn now [] (java.util.Date.))
+
+
 (defn log [msg]
   (println (str (now) ": " msg)))
 
+(defn log2 [node msg]
+  (log-at node msg)
+  (log (str (node :host) ": " msg)))
 
 ;;
 ;; Quartz specific
@@ -161,13 +167,10 @@
   (nput node "last-seen-oome" "Fri Dec 3 02:22:22 PST 2008"))
 
 (defn new-oome-vs [node oome-date-str]
-    (do
-      (println (node :host) ": Found new oome:" oome-date-str)
-        (restart-vs node)
-        (log (str (node :host) ": Restarted"))
-        (nput node "last-seen-oome" oome-date-str)
-        (log (str (node :host) ": Updated last-seen-oome to be:" oome-date-str))
-        (log-at node (str "Restarted due to recent oome: " oome-date-str))))
+  (log2 node "Found new oome:" oome-date-str)
+  (restart-vs node)
+  (log2 node "Restarted VoteServer")
+  (nput node "last-seen-oome" oome-date-str))
 
 (defn check-oome [node]
   (let [last-oome-str (last-line node *oome-log*)
@@ -175,13 +178,8 @@
         last-seen-oome (bash-time (nget node "last-seen-oome"))]
     (if (.after last-oome last-seen-oome)
       (new-oome-vs node last-oome-str)
-      (do
-        (log (str (node :host) ": No new oomes"))
-        (log-at node "No new oomes... ho hum")))))
-
-(defn check-oome-all []
-  (log "Running check-oome-all...")
-  (execs check-oome quartz))
+      (log2 node "No new oomes"))))
 
 (defn -main []
-  (check-oome vot004))
+  (log "Checking all vote servers for oomes...")
+  (execs check-oome quartz))

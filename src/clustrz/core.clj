@@ -1,7 +1,8 @@
 (ns clustrz.core
   (:use [clojure.string :only (split split-lines blank? join trim trim-newline)])
   (:use [clojure.java.shell :only (sh)])
-  (:use [clojure.pprint :only (pprint)]))
+  (:use [clojure.pprint :only (pprint)])
+  (:gen-class))
 
 (def *home* "~/.clustrz/")
 (def *log* (str *home* "node.log"))
@@ -84,8 +85,9 @@
         t (- (System/currentTimeMillis) start)]
     {:host (node :host) :out out :time t}))
 
+;;TODO: get this working with pmap
 (defn execs [f nodes]
-  (doall (pmap #(exec f %) nodes)))
+  (doall (map #(exec f %) nodes)))
 
 (defn mkdir [node file]
   (ssh-exec node (str "mkdir -p " file)))
@@ -112,6 +114,11 @@
 
 (defn get-log [node]
   (shout node (str "cat " *log*)))
+
+(defn now [] (java.util.Date.))
+(defn log [msg]
+  (println (str (now) ": " msg)))
+
 
 ;;
 ;; Quartz specific
@@ -156,9 +163,9 @@
     (do
       (println (node :host) ": Found new oome:" oome-date-str)
         (restart-vs node)
-        (println (node :host) ": Restarted")
+        (log (str (node :host) ": Restarted"))
         (nput node "last-seen-oome" oome-date-str)
-        (println (node :host) ": Updated last-seen-oome to be:" oome-date-str)
+        (log (str (node :host) ": Updated last-seen-oome to be:" oome-date-str))
         (log-at node (str "Restarted due to recent oome: " oome-date-str))))
 
 (defn check-oome [node]
@@ -168,6 +175,12 @@
     (if (.after last-oome last-seen-oome)
       (new-oome-vs node last-oome-str)
       (do
-        (println (node :host) ": No new oomes... ho hum")
+        (log (str (node :host) ": No new oomes"))
         (log-at node "No new oomes... ho hum")))))
 
+(defn check-oome-all []
+  (log "Running check-oome-all...")
+  (execs check-oome quartz))
+
+(defn -main []
+  (check-oome-all))

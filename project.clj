@@ -6,4 +6,6 @@
                 ]
   :dev-dependencies [
     [swank-clojure "1.4.0-SNAPSHOT"]
-])
+  ]
+  :main clustrz.core
+)

@@ -6,31 +6,21 @@
 
 (def *home* "~/.clustrz/")
 (def *log* (str *home* "node.log"))
-(def *bash-date-format* (java.text.SimpleDateFormat. "EEE MMM d HH:mm:ss z yyyyy"))
 
 (defn now [] (java.util.Date.))
 
 (defn ssh-exec [{:keys [host user]} cmd]
   (sh "ssh" (str user "@" host) cmd))
 
-(defn ls [node path]
-  (ssh-exec node (str "ls " path)))
-
-(defn java? [proc]
-  (not (nil? (re-matches #".*java" (first (split (proc :cmd) #"\s"))))))
-
-(defn clojure? [proc]
-  (not (nil? (re-matches #".* clojure\.main .*" (proc :cmd)))))
-
-;; TODO: key off of exit code for error, not stderr
 (defn shout
-  "Runs cmd on node and returns the textual result that went to stdout."
+  "Runs cmd on node and returns the textual result that went to stdout.
+   Throws an exception if the exit status of the command run on the node
+   was non-zero."
   [node cmd]
-  ;;(println "shout cmd:" cmd)
   (let [res (ssh-exec node cmd)]
-    (if (blank? (res :err))
+    (if (= 0 (res :exit))
       (trim-newline (res :out))
-      ; TODO: Throw SshException, which contains res? or encode res as clj str?
+      ;; TODO: Throw SshException, which contains res? or encode res as clj str?
       (throw (Exception. (str "shout error: " (res :err)))))))
 
 (defn ps-map [line]
@@ -43,10 +33,10 @@
 (defn ps [node]
   "Fetches data about running processes at node. Returns a list of hash maps. Each
    hashmap in the list represents a running process. Keys of the map include:
-   :pid
-   :time
-   :pctcpu
-   :cmd"
+     :pid
+     :time
+     :pctcpu
+     :cmd"
   (let [cmd (str "ps --no-header -u " (:user node) " -o \"%p|%x|%C|%a\"")
         lines (split-lines (shout node cmd))]
     (map #(ps-map %) lines)))
@@ -56,31 +46,14 @@
  [node]
  (shout node "uptime"))
 
+(defn mkdir [node file]
+  (ssh-exec node (str "mkdir -p " file)))
+
 (defn user-hosts [user hosts]
   (map #(hash-map :user user :host %) hosts))
 
-;; TODO!: so there's a conceptual difference between a host (e.g., "vot013")
-;; and a node (e.g., "my vineyard consumer on vot013"), and a process (e.g.,
-;; "pid 1071, which is running my vineyard consumer on vot013")
-
 (defn last-line [node file]
   (shout node (str "tail -1 " file)))
-
-(defn up? [{:keys [user host pid] :as node}]
-  (let [out (shout node (str "ps --no-header -p " pid))]
-    (not (blank? out))))
-
-(def down?
-  (complement up?))
-
-(defn tshout [node cmd]
-  (let [start (System/currentTimeMillis)
-        out (shout node cmd)
-        t (- (System/currentTimeMillis) start)]
-    {:host (node :host) :out out :time t}))
-
-(defn tshouts [nodes cmd]
-  (pmap #(tshout % cmd) nodes))
 
 (defn exec [f node]
   (let [start (System/currentTimeMillis)
@@ -88,12 +61,8 @@
         t (- (System/currentTimeMillis) start)]
     {:host (node :host) :out out :time t}))
 
-;;TODO: get this working with pmap
 (defn execs [f nodes]
-  (doall (map #(exec f %) nodes)))
-
-(defn mkdir [node file]
-  (ssh-exec node (str "mkdir -p " file)))
+  (doall (pmap #(exec f %) nodes)))
 
 (defn nput [node key val]
   (mkdir node (str *home* "kvs"))
@@ -104,11 +73,13 @@
   (let [file (str *home* "kvs/" (str key))]
     (shout node (str "cat " file))))
 
+;; TODO: creates a DateFormat each time for thread safety. better way?
 (defn bash-time
   "Converts a bash time string to a java Date.
    Example input, t: 'Fri Dec 3 02:51:12 PST 2010'"
   [t]
-  (.parse *bash-date-format* t))
+  (let [df (java.text.SimpleDateFormat. "EEE MMM d HH:mm:ss z yyyyy")]
+    (.parse df t)))
 
 ;; TODO: including quotes in msg is tricky. has to be like:
 ;;       (log-at vot013 "This... is... my... \\\"log\\\"")
@@ -118,14 +89,25 @@
 (defn get-log [node]
   (shout node (str "cat " *log*)))
 
-
-
 (defn log [msg]
   (println (str (now) ": " msg)))
 
 (defn log2 [node msg]
   (log-at node msg)
   (log (str (node :host) ": " msg)))
+
+(defn up? [{:keys [user host pid] :as node}]
+  (let [out (shout node (str "ps --no-header -p " pid))]
+    (not (blank? out))))
+
+(def down?
+  (complement up?))
+
+(defn java? [proc]
+  (not (nil? (re-matches #".*java" (first (split (proc :cmd) #"\s"))))))
+
+(defn clojure? [proc]
+  (not (nil? (re-matches #".* clojure\.main .*" (proc :cmd)))))
 
 ;;
 ;; Quartz specific
@@ -146,17 +128,18 @@
   {:host "vot004"
    :user "rails_deploy"})
 
-(def quartz (user-hosts "rails_deploy"
-                        ["vot004"
-                         "vot005"
-                         "vot006"
-                         "vot007"
-                         "vot009"
-                         "vot014"
-                         "vot010"
-                         "vot011"
-                         "vot012"
-                         "vot013"]))
+(def quartz
+  (user-hosts "rails_deploy"
+              ["vot004"
+               "vot005"
+               "vot006"
+               "vot007"
+               "vot009"
+               "vot014"
+               "vot010"
+               "vot011"
+               "vot012"
+               "vot013"]))
 
 (defn restart-vs [node]
   (shout node "/u/apps/PRODUCTION/quartz/shared/bin/vot_restart.sh"))

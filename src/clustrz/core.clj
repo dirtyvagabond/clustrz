@@ -2,6 +2,8 @@
   (:use [clojure.string :only (split split-lines blank? join trim trim-newline)])
   (:use [clojure.java.shell :only (sh)])
   (:use [clojure.pprint :only (pprint)])
+  (:use [clojure.contrib.duck-streams :only (make-parents)])
+  (:use [clojure.contrib.java-utils :only (file delete-file)])
   (:gen-class))
 
 (def *home* "~/.clustrz/")
@@ -18,6 +20,7 @@
    was non-zero."
   [node cmd]
   (let [res (ssh-exec node cmd)]
+    (println "SHOUT:" cmd)
     (if (= 0 (res :exit))
       (trim-newline (res :out))
       ;; TODO: Throw SshException, which contains res? or encode res as clj str?
@@ -55,6 +58,10 @@
 (defn last-line [node file]
   (shout node (str "tail -1 " file)))
 
+;; TODO: accidentally trying (execs f a-node) results in opaque error.
+;;       should i have just one exec, that asks (seq? nodes) ?
+;;       or at least put a precondition on execs that nodes be a seq?
+
 (defn exec [f node]
   (let [start (System/currentTimeMillis)
         out (f node)
@@ -80,6 +87,26 @@
   [t]
   (let [df (java.text.SimpleDateFormat. "EEE MMM d HH:mm:ss z yyyyy")]
     (.parse df t)))
+
+(defn scp
+  [local-file {:keys [host user]} dest-file]
+  (let [args (str local-file " " user "@" host ":" dest-file)]
+    (sh "scp" local-file (str user "@" host ":" dest-file))))
+
+(defn append-spit-at [node dest-file s]
+  (let [tmp-dest-file (str "/tmp/.clustrz_scp_" (java.util.UUID/randomUUID))]
+    (spit-at node tmp-dest-file s)
+    (ssh-exec node (str "cat " tmp-dest-file " >> " dest-file "; rm " tmp-dest-file))))
+
+(defn spit-at [node dest-file val]
+  (let [tmp-local-file (str "/tmp/.clustrz/scp/" (java.util.UUID/randomUUID))]
+    (make-parents (file tmp-local-file))
+    (spit tmp-local-file (str val))
+    (scp tmp-local-file node dest-file)
+    (delete-file tmp-local-file)))
+
+(defn slurp-at [node file]
+  (shout node (str "cat " file)))
 
 ;; TODO: including quotes in msg is tricky. has to be like:
 ;;       (log-at vot013 "This... is... my... \\\"log\\\"")

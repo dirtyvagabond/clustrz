@@ -7,6 +7,7 @@
   (:gen-class))
 
 (def *home* "~/.clustrz/")
+(def *kvs-dir* (str *home* "kvs/"))
 (def *log* (str *home* "node.log"))
 
 (defn now [] (java.util.Date.))
@@ -19,12 +20,10 @@
    Throws an exception if the exit status of the command run on the node
    was non-zero."
   [node cmd]
-  (let [res (ssh-exec node cmd)]
-    (println "SHOUT:" cmd)
-    (if (= 0 (res :exit))
-      (trim-newline (res :out))
-      ;; TODO: Throw SshException, which contains res? or encode res as clj str?
-      (throw (Exception. (str "shout error: " (res :err)))))))
+  (let [{:keys [exit out err]} (ssh-exec node cmd)]
+    (if (= 0 exit)
+      (trim-newline out)
+      (throw (Exception. (str "shout error: exit=" exit ", err=\"" (trim-newline err) "\""))))))
 
 (defn ps-map [line]
   (let [[pid time pctcpu cmd] (split line #"\|")]
@@ -49,20 +48,31 @@
  [node]
  (shout node "uptime"))
 
-(defn mkdir [node file]
+(defn mkdir-at [node file]
   (ssh-exec node (str "mkdir -p " file)))
+
+(defn delete-file-at [node file]
+  (ssh-exec node (str "rm " file)))
 
 (defn user-hosts [user hosts]
   (map #(hash-map :user user :host %) hosts))
 
+(defn last-lines [node file n]
+  (shout node (str "tail -" n " " file)))
+
 (defn last-line [node file]
-  (shout node (str "tail -1 " file)))
+  (last-lines node file 1))
 
 ;; TODO: accidentally trying (execs f a-node) results in opaque error.
 ;;       should i have just one exec, that asks (seq? nodes) ?
 ;;       or at least put a precondition on execs that nodes be a seq?
 
 (defn exec [f node]
+  "Runs f against node, and wraps the result in a hash map that contains
+   extra information about the run. The result of f itself will be at the
+   key :out. Other keys include:
+   :host  the node's hostname
+   :time  how long the run took"
   (let [start (System/currentTimeMillis)
         out (f node)
         t (- (System/currentTimeMillis) start)]
@@ -71,14 +81,45 @@
 (defn execs [f nodes]
   (doall (pmap #(exec f %) nodes)))
 
-(defn nput [node key val]
-  (mkdir node (str *home* "kvs"))
-  (let [file (str "~/.clustrz/kvs/" (str key))]
-    (ssh-exec node (str "echo \"" (str val) "\" > " file))))
+(defn nice-report-str [hashmaps]
+  (join "\n" (map #(str (:host %) ": " (:out %)) hashmaps)))
 
-(defn nget [node key]
-  (let [file (str *home* "kvs/" (str key))]
-    (shout node (str "cat " file))))
+(defn tmp-file []
+  (str "/tmp/clustrz_tmp_" (java.util.UUID/randomUUID)))
+
+(defn scp
+  [local-file {:keys [host user]} dest-file]
+  (let [args (str local-file " " user "@" host ":" dest-file)]
+    (sh "scp" local-file (str user "@" host ":" dest-file))))
+
+(defn spit-at [node dest-file val]
+  (let [tmp-local-file (tmp-file)]
+    (spit tmp-local-file (str val))
+    (let [res (scp tmp-local-file node dest-file)]
+      (delete-file tmp-local-file)
+      res)))
+
+(defn append-spit-at [node dest-file s]
+  (let [tmp-dest-file (tmp-file)]
+    (spit-at node tmp-dest-file s)
+    (ssh-exec node (str "cat " tmp-dest-file " >> " dest-file "; rm " tmp-dest-file))))
+
+(defn kvs-file [key]
+  (str *kvs-dir* key))
+
+(defn assoc-at [node key val]
+  ;;optimize: mkdir is only needed once per node, and only if the dir isn't there. how to track?
+  (mkdir-at node *kvs-dir*)
+  (spit-at node (kvs-file key) (str val)
+  ;;         (if (string? val) (str "\"" val "\"") val)
+           )
+  )
+
+(defn get-at [node key]
+  (shout node (str "cat " (kvs-file key))))
+
+(defn dissoc-at [node key]
+  (delete-file-at node (kvs-file key)))
 
 ;; TODO: creates a DateFormat each time for thread safety. better way?
 (defn bash-time
@@ -88,33 +129,11 @@
   (let [df (java.text.SimpleDateFormat. "EEE MMM d HH:mm:ss z yyyyy")]
     (.parse df t)))
 
-(defn scp
-  [local-file {:keys [host user]} dest-file]
-  (let [args (str local-file " " user "@" host ":" dest-file)]
-    (sh "scp" local-file (str user "@" host ":" dest-file))))
-
-(defn append-spit-at [node dest-file s]
-  (let [tmp-dest-file (str "/tmp/.clustrz_scp_" (java.util.UUID/randomUUID))]
-    (spit-at node tmp-dest-file s)
-    (ssh-exec node (str "cat " tmp-dest-file " >> " dest-file "; rm " tmp-dest-file))))
-
-(defn spit-at [node dest-file val]
-  (let [tmp-local-file (str "/tmp/.clustrz/scp/" (java.util.UUID/randomUUID))]
-    (make-parents (file tmp-local-file))
-    (spit tmp-local-file (str val))
-    (scp tmp-local-file node dest-file)
-    (delete-file tmp-local-file)))
-
 (defn slurp-at [node file]
   (shout node (str "cat " file)))
 
-;; TODO: including quotes in msg is tricky. has to be like:
-;;       (log-at vot013 "This... is... my... \\\"log\\\"")
 (defn log-at [node msg]
-  (ssh-exec node (str "echo `date`: \"" msg "\" >> " *log*)))
-
-(defn get-log [node]
-  (shout node (str "cat " *log*)))
+  (append-spit-at node *log* (str (now) ": " msg "\n")))
 
 (defn log [msg]
   (println (str (now) ": " msg)))
@@ -171,24 +190,28 @@
 (defn restart-vs [node]
   (shout node "/u/apps/PRODUCTION/quartz/shared/bin/vot_restart.sh"))
 
-;;TODO: otherwise, check errors out because nget triggers an exception due to file not found;
-;;      need a good way for nget to return nil in this case instead.
+;;TODO: otherwise, check errors out because get-at triggers an exception due to file not found;
+;;      need a good way for get-at to return nil in this case instead.
 (defn prep-oome-check [node]
-  (nput node "last-seen-oome" "Fri Dec 3 02:22:22 PST 2008"))
+  (assoc-at node "last-seen-oome" "Fri Dec 3 02:22:22 PST 2008"))
 
 (defn new-oome-vs [node oome-date-str]
   (log2 node "Found new oome:" oome-date-str)
   (restart-vs node)
   (log2 node "Restarted VoteServer")
-  (nput node "last-seen-oome" oome-date-str))
+  (assoc-at node "last-seen-oome" oome-date-str))
 
 (defn check-oome [node]
   (let [last-oome-str (last-line node *oome-log*)
         last-oome (bash-time last-oome-str)
-        last-seen-oome (bash-time (nget node "last-seen-oome"))]
+        last-seen-oome (bash-time (get-at node "last-seen-oome"))]
     (if (.after last-oome last-seen-oome)
-      (new-oome-vs node last-oome-str)
-      (log2 node "No new oomes"))))
+      (do
+        (new-oome-vs node last-oome-str)
+        {:new-oome last-oome})
+      (do
+        (log2 node "No new oomes")
+        {:new-oome false}))))
 
 (defn -main []
   (log "Checking all vote servers for oomes...")

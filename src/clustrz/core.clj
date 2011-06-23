@@ -181,16 +181,12 @@
   (jmx/with-connection (jmx-props node)
     (jmx/mbean (str "java.lang:type=" type))))
 
-(defn jmx-test []
-  (jmx/with-connection (jmx-props vot004)
-    (jmx/mbean "java.lang:type=OperatingSystem")))
-
 (defn start-time-at [node]
   (:StartTime
    (jmx-type-at node "Runtime")))
 
 (defn threading-at [node]
-  (jmx-type-at vot "Threading"))
+  (jmx-type-at node "Threading"))
 
 ;;
 ;; Quartz specific
@@ -201,16 +197,18 @@
    (java? proc)
    (not (nil? (re-matches #".* quartz.voteserver.rest.VoteServerRestBootstrap .*" (proc :cmd))))))
 
-(def *oome-log* "/u/apps/PRODUCTION/quartz/shared/bin/oome.log")
+(def oome-log "/u/apps/PRODUCTION/quartz/shared/bin/oome.log")
 
 (def vot-hosts (map #(str "vot0" %) ["04" "05" "06" "07" "09" "14" "10" "11" "12" "13"]))
 
 (def quartz-props {:user "rails_deploy",
                      :jmx {:port 8021, :user "monitorRole", :pwd "quartz"}})
 
+;; Quartz vote servers. Every host has the same properties (except host name).
 (def quartz (map #(merge quartz-props {:host %}) vot-hosts))
 
-(def vot (first quartz)) ;;; sample vote server node
+;; A sample vote server node
+(def vot (first quartz))
 
 (defn restart-vs [node]
   (shout node "/u/apps/PRODUCTION/quartz/shared/bin/vot_restart.sh"))
@@ -224,12 +222,12 @@
   (log2 node "Found new oome:" oome-date-str)
   (restart-vs node)
   (log2 node "Restarted VoteServer")
-  (assoc-at node "last-seen-oome" oome-date-str))
+  (assoc-at node :last-seen-oome oome-date-str))
 
 (defn check-oome [node]
-  (let [last-oome-str (last-line node *oome-log*)
+  (let [last-oome-str (last-line node oome-log)
         last-oome (bash-time last-oome-str)
-        last-seen-oome (bash-time (get-at node "last-seen-oome"))]
+        last-seen-oome (bash-time (get-at node :last-seen-oome))]
     (if (.after last-oome last-seen-oome)
       (do
         (new-oome-vs node last-oome-str)

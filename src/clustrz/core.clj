@@ -111,19 +111,18 @@
 (defn kvs-file [key]
   (str *kvs-dir* key))
 
-;;TODO: get structures and read-string to work with assoc-at and get. actually,
-;;      i think i just need to delete incorrectly-written kvals; the ones with the date str.
-
-(defn assoc-at [node key val]
+(defn assoc-at
+  "Associates val with key, at node. val can be any Clojure object."
+  [node key val]
   ;;optimize: mkdir is only needed once per node, and only if the dir isn't there. how to track?
   (mkdir-at node *kvs-dir*)
-  (spit-at node (kvs-file key) (str val)
-  ;;         (if (string? val) (str "\"" val "\"") val)
-           )
-  )
+  (spit-at node (kvs-file key) (with-out-str (pr val))))
 
-(defn get-at [node key]
-  (shout node (str "cat " (kvs-file key))))
+(defn get-at
+  "Returns the object associated with key at node, or nil if none."
+  [node key]
+  (read-string
+    (shout node (str "cat " (kvs-file key)))))
 
 (defn dissoc-at [node key]
   (delete-file-at node (kvs-file key)))

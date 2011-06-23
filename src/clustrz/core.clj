@@ -4,6 +4,7 @@
   (:use [clojure.pprint :only (pprint)])
   (:use [clojure.contrib.duck-streams :only (make-parents)])
   (:use [clojure.contrib.java-utils :only (file delete-file)])
+  (:require [clojure.contrib.jmx :as jmx])
   (:gen-class))
 
 (def *home* "~/.clustrz/")
@@ -12,6 +13,8 @@
 
 (defn now [] (java.util.Date.))
 
+;; TODO: consider security; "bash injection" attacks,
+;;       e.g., passing hostile escaped bash code to things like assoc-at.
 (defn ssh-exec [{:keys [host user]} cmd]
   (sh "ssh" (str user "@" host) cmd))
 
@@ -54,9 +57,6 @@
 (defn delete-file-at [node file]
   (ssh-exec node (str "rm " file)))
 
-(defn user-hosts [user hosts]
-  (map #(hash-map :user user :host %) hosts))
-
 (defn last-lines [node file n]
   (shout node (str "tail -" n " " file)))
 
@@ -76,7 +76,9 @@
   (let [start (System/currentTimeMillis)
         out (f node)
         t (- (System/currentTimeMillis) start)]
-    {:host (node :host) :out out :time t}))
+    {:out   out
+     :host  (node :host)
+     :time  t}))
 
 (defn execs [f nodes]
   (doall (pmap #(exec f %) nodes)))
@@ -89,8 +91,7 @@
 
 (defn scp
   [local-file {:keys [host user]} dest-file]
-  (let [args (str local-file " " user "@" host ":" dest-file)]
-    (sh "scp" local-file (str user "@" host ":" dest-file))))
+  (sh "scp" local-file (str user "@" host ":" dest-file)))
 
 (defn spit-at [node dest-file val]
   (let [tmp-local-file (tmp-file)]
@@ -104,8 +105,14 @@
     (spit-at node tmp-dest-file s)
     (ssh-exec node (str "cat " tmp-dest-file " >> " dest-file "; rm " tmp-dest-file))))
 
+(defn slurp-at [node file]
+  (shout node "cat " file))
+
 (defn kvs-file [key]
   (str *kvs-dir* key))
+
+;;TODO: get structures and read-string to work with assoc-at and get. actually,
+;;      i think i just need to delete incorrectly-written kvals; the ones with the date str.
 
 (defn assoc-at [node key val]
   ;;optimize: mkdir is only needed once per node, and only if the dir isn't there. how to track?
@@ -156,6 +163,36 @@
   (not (nil? (re-matches #".* clojure\.main .*" (proc :cmd)))))
 
 ;;
+;; JMX related
+;;
+
+(defn jmx-props [node]
+  {:host (:host node),
+   :port (get-in node [:jmx :port]),
+   :environment {"jmx.remote.credentials" (into-array [(get-in node [:jmx :user])
+                                                       (get-in node [:jmx :pwd])])}})
+
+(defn jmx-names [node]
+  (into #{}
+   (jmx/with-connection (jmx-props node)
+     (jmx/mbean-names "*:*"))))
+
+(defn jmx-type-at [node type]
+  (jmx/with-connection (jmx-props node)
+    (jmx/mbean (str "java.lang:type=" type))))
+
+(defn jmx-test []
+  (jmx/with-connection (jmx-props vot004)
+    (jmx/mbean "java.lang:type=OperatingSystem")))
+
+(defn start-time-at [node]
+  (:StartTime
+   (jmx-type-at node "Runtime")))
+
+(defn threading-at [node]
+  (jmx-type-at vot "Threading"))
+
+;;
 ;; Quartz specific
 ;;
 
@@ -166,26 +203,14 @@
 
 (def *oome-log* "/u/apps/PRODUCTION/quartz/shared/bin/oome.log")
 
-(def vot013
-  {:host "vot013"
-   :user "rails_deploy"})
+(def vot-hosts (map #(str "vot0" %) ["04" "05" "06" "07" "09" "14" "10" "11" "12" "13"]))
 
-(def vot004
-  {:host "vot004"
-   :user "rails_deploy"})
+(def quartz-props {:user "rails_deploy",
+                     :jmx {:port 8021, :user "monitorRole", :pwd "quartz"}})
 
-(def quartz
-  (user-hosts "rails_deploy"
-              ["vot004"
-               "vot005"
-               "vot006"
-               "vot007"
-               "vot009"
-               "vot014"
-               "vot010"
-               "vot011"
-               "vot012"
-               "vot013"]))
+(def quartz (map #(merge quartz-props {:host %}) vot-hosts))
+
+(def vot (first quartz)) ;;; sample vote server node
 
 (defn restart-vs [node]
   (shout node "/u/apps/PRODUCTION/quartz/shared/bin/vot_restart.sh"))

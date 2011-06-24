@@ -161,6 +161,12 @@
 (defn clojure? [proc]
   (not (nil? (re-matches #".* clojure\.main .*" (proc :cmd)))))
 
+(defn wget-at
+  ([node url dest-dir]
+    (wget-at node url dest-dir ""))
+  ([node url dest-dir opts]
+    (ssh-exec node (str "cd " dest-dir "; wget " opts " " url))))
+
 ;;
 ;; JMX related
 ;;

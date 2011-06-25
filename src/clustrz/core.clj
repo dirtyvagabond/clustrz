@@ -74,17 +74,32 @@
    :host  the node's hostname
    :time  how long the run took"
   (let [start (System/currentTimeMillis)
-        out (f node)
+        out (trim (f node))
         t (- (System/currentTimeMillis) start)]
     {:out   out
      :host  (node :host)
      :time  t}))
 
 (defn execs [f nodes]
-  (doall (pmap #(exec f %) nodes)))
+  (doall (apply pcalls (map #(partial f %) nodes))))
 
 (defn nice-report-str [hashmaps]
   (join "\n" (map #(str (:host %) ": " (:out %)) hashmaps)))
+
+;;TODO: is it goofy to transparenty treat a node as a cluster?
+;;      this means that, e.g., ($ f a-single-node) will return
+;;      a sequence, so the caller will need to call first
+;;      to get just the result. But I don't know if I like having
+;;      one function that expects a single node, and another
+;;      function that expects nodes, like the exec and execs
+;;      functions... this can get tedious when writing calling
+;;      code.
+(defn $ [f nodes]
+  (let [nodes (if (seq? nodes) nodes (list nodes))]
+    (doall (apply pcalls (map #(partial exec f %) nodes)))))
+
+(defn report [fn nodes]
+  (nice-report-str ($ fn nodes)))
 
 (defn tmp-file []
   (str "/tmp/clustrz_tmp_" (java.util.UUID/randomUUID)))
@@ -231,10 +246,13 @@
   (log2 node "Restarted VoteServer")
   (assoc-at node :last-seen-oome oome-date-str))
 
+(defn get-last-seen-oome [node]
+  (bash-time (get-at node :last-seen-oome)))
+
 (defn check-oome [node]
   (let [last-oome-str (last-line node oome-log)
         last-oome (bash-time last-oome-str)
-        last-seen-oome (bash-time (get-at node :last-seen-oome))]
+        last-seen-oome (get-last-seen-oome node)]
     (if (.after last-oome last-seen-oome)
       (do
         (new-oome-vs node last-oome-str)

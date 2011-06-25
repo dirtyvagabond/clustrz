@@ -1,33 +1,31 @@
 (ns clustrz.core
   (:use [clojure.string :only (split split-lines blank? join trim trim-newline)])
   (:use [clojure.java.shell :only (sh)])
-  (:use [clojure.pprint :only (pprint)]))
+  (:use [clojure.pprint :only (pprint)])
+  (:use [clojure.contrib.duck-streams :only (make-parents)])
+  (:use [clojure.contrib.java-utils :only (file delete-file)])
+  (:gen-class))
 
 (def *home* "~/.clustrz/")
+(def *kvs-dir* (str *home* "kvs/"))
+(def *log* (str *home* "node.log"))
 
-(def *bash-date-format* (java.text.SimpleDateFormat. "EEE MMM d HH:mm:ss z yyyyy"))
+(defn now [] (java.util.Date.))
 
+;; TODO: consider security; "bash injection" attacks,
+;;       e.g., passing hostile escaped bash code to things like assoc-at.
 (defn ssh-exec [{:keys [host user]} cmd]
   (sh "ssh" (str user "@" host) cmd))
 
-(defn ls [node path]
-  (ssh-exec node (str "ls " path)))
-
-(defn java? [proc]
-  (not (nil? (re-matches #".*java" (first (split (proc :cmd) #"\s"))))))
-
-(defn clojure? [proc]
-  (not (nil? (re-matches #".* clojure\.main .*" (proc :cmd)))))
-
 (defn shout
-  "Runs cmd on node and returns the textual result that went to stdout."
+  "Runs cmd on node and returns the textual result that went to stdout.
+   Throws an exception if the exit status of the command run on the node
+   was non-zero."
   [node cmd]
-  ;;(println "shout cmd:" cmd)
-  (let [res (ssh-exec node cmd)]
-    (if (blank? (res :err))
-      (trim-newline (res :out))
-      ; TODO: Throw SshException, which contains res? or encode res as clj str?
-      (throw (Exception. (str "shout error: " (res :err)))))))
+  (let [{:keys [exit out err]} (ssh-exec node cmd)]
+    (if (= 0 exit)
+      (trim-newline out)
+      (throw (Exception. (str "shout error: exit=" exit ", err=\"" (trim-newline err) "\""))))))
 
 (defn ps-map [line]
   (let [[pid time pctcpu cmd] (split line #"\|")]
@@ -39,10 +37,10 @@
 (defn ps [node]
   "Fetches data about running processes at node. Returns a list of hash maps. Each
    hashmap in the list represents a running process. Keys of the map include:
-   :pid
-   :time
-   :pctcpu
-   :cmd"
+     :pid
+     :time
+     :pctcpu
+     :cmd"
   (let [cmd (str "ps --no-header -u " (:user node) " -o \"%p|%x|%C|%a\"")
         lines (split-lines (shout node cmd))]
     (map #(ps-map %) lines)))
@@ -52,76 +50,119 @@
  [node]
  (shout node "uptime"))
 
+(defn mkdir-at [node file]
+  (ssh-exec node (str "mkdir -p " file)))
+
+(defn delete-file-at [node file]
+  (ssh-exec node (str "rm " file)))
+
 (defn user-hosts [user hosts]
   (map #(hash-map :user user :host %) hosts))
 
-;; TODO!: so there's a conceptual difference between a host (e.g., "vot013")
-;; and a node (e.g., "my vineyard consumer on vot013"), and a process (e.g.,
-;; "pid 1071, which is running my vineyard consumer on vot013")
+(defn last-lines [node file n]
+  (shout node (str "tail -" n " " file)))
 
 (defn last-line [node file]
-  (shout node (str "tail -1 " file)))
+  (last-lines node file 1))
 
-(defn up? [{:keys [user host pid]}]
-  (let [ps-out (sh "ssh" (str user "@" host) (str "ps --no-header -p " pid))]
-    (not (blank? ps-out))))
-
-(def down?
-  (complement up?))
-
-(defn tshout [node cmd]
-  (let [start (System/currentTimeMillis)
-        out (shout node cmd)
-        t (- (System/currentTimeMillis) start)]
-    {:host (node :host) :out out :time t}))
+;; TODO: accidentally trying (execs f a-node) results in opaque error.
+;;       should i have just one exec, that asks (seq? nodes) ?
+;;       or at least put a precondition on execs that nodes be a seq?
 
 (defn exec [f node]
+  "Runs f against node, and wraps the result in a hash map that contains
+   extra information about the run. The result of f itself will be at the
+   key :out. Other keys include:
+   :host  the node's hostname
+   :time  how long the run took"
   (let [start (System/currentTimeMillis)
         out (f node)
         t (- (System/currentTimeMillis) start)]
-    {:host (node :host) :out out :time t}))
-
-(defn tshouts [nodes cmd]
-  (pmap #(tshout % cmd) nodes))
+    {:out   out
+     :host  (node :host)
+     :time  t}))
 
 (defn execs [f nodes]
-  (pmap #(exec f %) nodes))
+  (doall (pmap #(exec f %) nodes)))
 
-(defn mkdir [node file]
-  (ssh-exec node (str "mkdir -p " file)))
+(defn nice-report-str [hashmaps]
+  (join "\n" (map #(str (:host %) ": " (:out %)) hashmaps)))
 
-(defn contents [node file]
-  (let [cmd (str
-             "if [ -f " file " ]\n"
-             "then\n"
-             "  echo \"Found it\"\n"
-             "else\n"
-             "  exit -1\n"
-             "fi\n")]
-    (println cmd)
-    (ssh-exec node cmd))
+(defn tmp-file []
+  (str "/tmp/clustrz_tmp_" (java.util.UUID/randomUUID)))
+
+(defn scp
+  [local-file {:keys [host user]} dest-file]
+  (sh "scp" local-file (str user "@" host ":" dest-file)))
+
+(defn spit-at [node dest-file val]
+  (let [tmp-local-file (tmp-file)]
+    (spit tmp-local-file (str val))
+    (let [res (scp tmp-local-file node dest-file)]
+      (delete-file tmp-local-file)
+      res)))
+
+(defn append-spit-at [node dest-file s]
+  (let [tmp-dest-file (tmp-file)]
+    (spit-at node tmp-dest-file s)
+    (ssh-exec node (str "cat " tmp-dest-file " >> " dest-file "; rm " tmp-dest-file))))
+
+(defn slurp-at [node file]
+  (shout node "cat " file))
+
+(defn kvs-file [key]
+  (str *kvs-dir* key))
+
+;;TODO: get structures and read-string to work with assoc-at and get. actually,
+;;      i think i just need to delete incorrectly-written kvals; the ones with the date str.
+
+(defn assoc-at [node key val]
+  ;;optimize: mkdir is only needed once per node, and only if the dir isn't there. how to track?
+  (mkdir-at node *kvs-dir*)
+  (spit-at node (kvs-file key) (str val)
+  ;;         (if (string? val) (str "\"" val "\"") val)
+           )
   )
 
-(defn nput [node key val]
-  (mkdir node (str *home* "kvs"))
-  (let [file (str "~/.clustrz/kvs/" key)]
-    (ssh-exec node (str "echo \"" (str val) "\" > " file))))
+(defn get-at [node key]
+  (shout node (str "cat " (kvs-file key))))
 
-(defn nget [node key]
-  (let [file (str *home* "kvs/" key)]
-    (shout node (str "cat " file))))
+(defn dissoc-at [node key]
+  (delete-file-at node (kvs-file key)))
 
+;; TODO: creates a DateFormat each time for thread safety. better way?
 (defn bash-time
   "Converts a bash time string to a java Date.
    Example input, t: 'Fri Dec 3 02:51:12 PST 2010'"
   [t]
-  (.parse *bash-date-format* t))
+  (let [df (java.text.SimpleDateFormat. "EEE MMM d HH:mm:ss z yyyyy")]
+    (.parse df t)))
 
-;; TODO: including quotes in msg is tricky. has to be like:
-;;       (log-at vot013 "This... is... my... \\\"log\\\"")
+(defn slurp-at [node file]
+  (shout node (str "cat " file)))
+
 (defn log-at [node msg]
-  (let [file (str *home* "node.log")]
-    (ssh-exec node (str "echo `date`: \"" msg "\" >> " file))))
+  (append-spit-at node *log* (str (now) ": " msg "\n")))
+
+(defn log [msg]
+  (println (str (now) ": " msg)))
+
+(defn log2 [node msg]
+  (log-at node msg)
+  (log (str (node :host) ": " msg)))
+
+(defn up? [{:keys [user host pid] :as node}]
+  (let [out (shout node (str "ps --no-header -p " pid))]
+    (not (blank? out))))
+
+(def down?
+  (complement up?))
+
+(defn java? [proc]
+  (not (nil? (re-matches #".*java" (first (split (proc :cmd) #"\s"))))))
+
+(defn clojure? [proc]
+  (not (nil? (re-matches #".* clojure\.main .*" (proc :cmd)))))
 
 ;;
 ;; Quartz specific
@@ -138,44 +179,49 @@
   {:host "vot013"
    :user "rails_deploy"})
 
-(def quartz (user-hosts "rails_deploy"
-                        ["vot004"
-                         "vot005"
-                         "vot006"
-                         "vot007"
-                         "vot009"
-                         "vot014"
-                         "vot010"
-                         "vot011"
-                         "vot012"
-                         "vot013"]))
+(def vot004
+  {:host "vot004"
+   :user "rails_deploy"})
 
-(defn last-oome [node]
-  (bash-time ))
+(def quartz
+  (user-hosts "rails_deploy"
+              ["vot004"
+               "vot005"
+               "vot006"
+               "vot007"
+               "vot009"
+               "vot014"
+               "vot010"
+               "vot011"
+               "vot012"
+               "vot013"]))
 
 (defn restart-vs [node]
   (shout node "/u/apps/PRODUCTION/quartz/shared/bin/vot_restart.sh"))
 
-;;TODO: otherwise, check errors out because nget triggers an exception due to file not found;
-;;      need a good way for nget to return nil in this case instead.
+;;TODO: otherwise, check errors out because get-at triggers an exception due to file not found;
+;;      need a good way for get-at to return nil in this case instead.
 (defn prep-oome-check [node]
-  (nput node "last-seen-oome" "Fri Dec 3 02:22:22 PST 2008"))
+  (assoc-at node "last-seen-oome" "Fri Dec 3 02:22:22 PST 2008"))
 
 (defn new-oome-vs [node oome-date-str]
-    (do
-      (println "Found new oome at" (node :host) ":" oome-date-str)
-        (restart-vs node)
-        (println "Restarted" (node :host))
-        (nput node "last-seen-oome" oome-date-str)
-        (println "Updated last-seen-oome at" (node :host))
-        (log-at node (str "Restarted due to recent oome: " oome-date-str))))
+  (log2 node "Found new oome:" oome-date-str)
+  (restart-vs node)
+  (log2 node "Restarted VoteServer")
+  (assoc-at node "last-seen-oome" oome-date-str))
 
 (defn check-oome [node]
   (let [last-oome-str (last-line node *oome-log*)
         last-oome (bash-time last-oome-str)
-        last-seen-oome (bash-time (nget node "last-seen-oome"))]
+        last-seen-oome (bash-time (get-at node "last-seen-oome"))]
     (if (.after last-oome last-seen-oome)
-      (new-oome-vs node last-oome-str)
       (do
-        (println "No new oomes... ho hum")
-        (log-at node "No new oomes... ho hum")))))
+        (new-oome-vs node last-oome-str)
+        {:new-oome last-oome})
+      (do
+        (log2 node "No new oomes")
+        {:new-oome false}))))
+
+(defn -main []
+  (log "Checking all vote servers for oomes...")
+  (execs check-oome quartz))

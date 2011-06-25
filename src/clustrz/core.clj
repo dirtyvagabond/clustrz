@@ -204,8 +204,9 @@
     (jmx/mbean (str "java.lang:type=" type))))
 
 (defn start-time-at [node]
-  (:StartTime
-   (jmx-type-at node "Runtime")))
+  (java.util.Date.
+   (:StartTime
+    (jmx-type-at node "Runtime"))))
 
 (defn threading-at [node]
   (jmx-type-at node "Threading"))

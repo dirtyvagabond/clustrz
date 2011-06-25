@@ -165,6 +165,8 @@
   ([node url dest-dir]
     (wget-at node url dest-dir ""))
   ([node url dest-dir opts]
+     "Runs wget at node for the specified url, with pwd set to dest-dir.
+      opts must be valid options as one string, or an empty string."
     (ssh-exec node (str "cd " dest-dir "; wget " opts " " url))))
 
 ;;
@@ -218,13 +220,13 @@
 (defn restart-vs [node]
   (shout node "/u/apps/PRODUCTION/quartz/shared/bin/vot_restart.sh"))
 
-;;TODO: otherwise, check errors out because get-at triggers an exception due to file not found;
+;;TODO: otherwise, check-oome breaks because get-at triggers an exception due to file not found;
 ;;      need a good way for get-at to return nil in this case instead.
 (defn prep-oome-check [node]
-  (assoc-at node "last-seen-oome" "Fri Dec 3 02:22:22 PST 2008"))
+  (assoc-at node :last-seen-oome "Fri Dec 3 02:22:22 PST 2008"))
 
 (defn new-oome-vs [node oome-date-str]
-  (log2 node "Found new oome:" oome-date-str)
+  (log2 node (str "Found new oome: " oome-date-str))
   (restart-vs node)
   (log2 node "Restarted VoteServer")
   (assoc-at node :last-seen-oome oome-date-str))

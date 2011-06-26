@@ -46,7 +46,7 @@
         lines (split-lines (shout node cmd))]
     (map #(ps-map %) lines)))
 
-(defn uptime
+(defn uptime-at
  "Fetches the raw uptime string from node."
  [node]
  (shout node "uptime"))
@@ -199,14 +199,24 @@
    (jmx/with-connection (jmx-props node)
      (jmx/mbean-names "*:*"))))
 
-(defn jmx-type-at [node type]
-  (jmx/with-connection (jmx-props node)
-    (jmx/mbean (str "java.lang:type=" type))))
+(defn jmx-type-at
+  ([node package type]
+    (jmx/with-connection (jmx-props node)
+      (jmx/mbean (str package ":type=" type))))
+  ([node type]
+     (jmx-type-at node "java.lang" type)))
 
 (defn start-time-at [node]
   (java.util.Date.
-   (:StartTime
-    (jmx-type-at node "Runtime"))))
+    (:StartTime
+      (jmx-type-at node "Runtime"))))
+
+(defn os-at [node]
+  (jmx-type-at node "OperatingSystem"))
+
+(defn load-avg-at [node]
+  (:SystemLoadAverage
+    (os-at node)))
 
 (defn threading-at [node]
   (jmx-type-at node "Threading"))
@@ -232,6 +242,11 @@
 
 ;; A sample vote server node
 (def vot (first quartz))
+
+;; TODO: ambiguous if >1 vs is running  :-/
+(defn vs-load-at [node]
+  (:pctcpu
+    (first (filter vote-server? (ps node)))))
 
 (defn restart-vs [node]
   (shout node "/u/apps/PRODUCTION/quartz/shared/bin/vot_restart.sh"))

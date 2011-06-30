@@ -25,7 +25,7 @@
   [node cmd]
   (let [{:keys [exit out err]} (ssh-exec node cmd)]
     (if (= 0 exit)
-      (trim-newline out)
+      (trim out)
       (throw (Exception. (str "shout error: exit=" exit ", err=\"" (trim-newline err) "\""))))))
 
 (defn ps-map [line]
@@ -45,11 +45,6 @@
   (let [cmd (str "ps --no-header -u " (:user node) " -o \"%p|%x|%C|%a\"")
         lines (split-lines (shout node cmd))]
     (map #(ps-map %) lines)))
-
-(defn uptime-at
- "Fetches the raw uptime string from node."
- [node]
- (shout node "uptime"))
 
 (defn mkdir-at [node file]
   (ssh-exec node (str "mkdir -p " file)))
@@ -83,8 +78,16 @@
 (defn execs [f nodes]
   (doall (apply pcalls (map #(partial f %) nodes))))
 
+(defn uptime-at
+ "Fetches the raw uptime string from node."
+ [node]
+ (shout node "uptime"))
+
 (defn nice-report-str [hashmaps]
   (join "\n" (map #(str (:host %) ": " (:out %)) hashmaps)))
+
+(defn nice-seq [thing]
+  (if (seq? thing) thing (list thing)))
 
 ;;TODO: is it goofy to transparenty treat a node as a cluster?
 ;;      this means that, e.g., ($ f a-single-node) will return
@@ -95,8 +98,7 @@
 ;;      functions... this can get tedious when writing calling
 ;;      code.
 (defn $ [f nodes]
-  (let [nodes (if (seq? nodes) nodes (list nodes))]
-    (doall (apply pcalls (map #(partial exec f %) nodes)))))
+  (doall (apply pcalls (map #(partial exec f %) (nice-seq nodes)))))
 
 (defn report [fn nodes]
   (nice-report-str ($ fn nodes)))
@@ -105,8 +107,23 @@
   (str "/tmp/clustrz_tmp_" (java.util.UUID/randomUUID)))
 
 (defn scp
+  "Copies local-file to the specified host destination, copying it
+   to the file path specified by dest-file."
   [local-file {:keys [host user]} dest-file]
-  (sh "scp" local-file (str user "@" host ":" dest-file)))
+    (sh "scp" local-file (str user "@" host ":" dest-file)))
+
+(defn scp-files
+  "Copies local files to the specified destination folder on the
+   specified remote host."
+  [files {:keys [host user]} dest-path]
+  (let [dest (str user "@" host ":" dest-path)
+        args (concat '("scp") files (list dest))]
+     (apply sh args)))
+
+(defn test-scp []
+  (sh "scp"
+      "/tmp/test1.txt" "/tmp/test2.txt" "/tmp/test3.txt"
+      "rails_deploy@vot004.factual.com:/home/rails_deploy/"))
 
 (defn spit-at [node dest-file val]
   (let [tmp-local-file (tmp-file)]
@@ -184,6 +201,17 @@
       opts must be valid options as one string, or an empty string."
     (ssh-exec node (str "cd " dest-dir "; wget " opts " " url))))
 
+(defn tagger
+  "Associates key to node, where the value of key is the
+   result of calling f on node."
+  [node key f]
+  (assoc node key (f node)))
+
+(defn >+ [f nodes]
+  (doall (apply pcalls (map
+                  #(partial tagger % (keyword (:name (meta f))) f)
+                  (nice-seq nodes)))))
+
 ;;
 ;; JMX related
 ;;
@@ -240,13 +268,28 @@
 ;; Quartz vote servers. Every host has the same properties (except host name).
 (def quartz (map #(merge quartz-props {:host %}) vot-hosts))
 
+(defmacro d-hosts [cluster]
+  (doseq [node cluster]
+    (eval `(def ~(:host node) ~node))
+    )
+  )
+
+(defmacro def-hosts [cluster]
+  (let [node (gensym "node")]
+    `(doseq [~node ~cluster]
+       (println "defining" (str (:host ~node)))
+       (def ~(symbol (str (:host `~node))) ~node))))
+
 ;; A sample vote server node
 (def vot (first quartz))
 
+(defn vote-servers-at [node]
+  (filter vote-server? (ps node)))
+
 ;; TODO: ambiguous if >1 vs is running  :-/
-(defn vs-load-at [node]
+(defn pct-cpu-at [node]
   (:pctcpu
-    (first (filter vote-server? (ps node)))))
+    (first (vote-servers-at node))))
 
 (defn restart-vs [node]
   (shout node "/u/apps/PRODUCTION/quartz/shared/bin/vot_restart.sh"))

@@ -106,24 +106,18 @@
 (defn tmp-file []
   (str "/tmp/clustrz_tmp_" (java.util.UUID/randomUUID)))
 
-(defn scp
+(defn copy-to
   "Copies local-file to the specified host destination, copying it
    to the file path specified by dest-file."
   [local-file {:keys [host user]} dest-file]
     (sh "scp" local-file (str user "@" host ":" dest-file)))
 
-(defn scp-files
+(defn copy-files-to
   "Copies local files to the specified destination folder on the
    specified remote host."
   [files {:keys [host user]} dest-path]
-  (let [dest (str user "@" host ":" dest-path)
-        args (concat '("scp") files (list dest))]
-     (apply sh args)))
-
-(defn test-scp []
-  (sh "scp"
-      "/tmp/test1.txt" "/tmp/test2.txt" "/tmp/test3.txt"
-      "rails_deploy@vot004.factual.com:/home/rails_deploy/"))
+  (let [dest (str user "@" host ":" dest-path)]
+    (apply sh (flatten ["scp" files dest]))))
 
 (defn spit-at [node dest-file val]
   (let [tmp-local-file (tmp-file)]
@@ -192,6 +186,9 @@
 
 (defn clojure? [proc]
   (not (nil? (re-matches #".* clojure\.main .*" (proc :cmd)))))
+
+(defn chmod-at [node opts file]
+  (ssh-exec node (str "chmod " opts " " file)))
 
 (defn wget-at
   ([node url dest-dir]
@@ -268,17 +265,11 @@
 ;; Quartz vote servers. Every host has the same properties (except host name).
 (def quartz (map #(merge quartz-props {:host %}) vot-hosts))
 
-(defmacro d-hosts [cluster]
-  (doseq [node cluster]
-    (eval `(def ~(:host node) ~node))
-    )
-  )
-
-(defmacro def-hosts [cluster]
-  (let [node (gensym "node")]
-    `(doseq [~node ~cluster]
-       (println "defining" (str (:host ~node)))
-       (def ~(symbol (str (:host `~node))) ~node))))
+(comment
+  (defmacro def-hosts [cluster]
+    (let [node (gensym "node")]
+      `(doseq [~node ~cluster]
+         (def ~(symbol (str (:host `~node))) ~node)))))
 
 ;; A sample vote server node
 (def vot (first quartz))

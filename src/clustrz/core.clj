@@ -122,7 +122,7 @@
 (defn spit-at [node dest-file val]
   (let [tmp-local-file (tmp-file)]
     (spit tmp-local-file (str val))
-    (let [res (scp tmp-local-file node dest-file)]
+    (let [res (copy-to tmp-local-file node dest-file)]
       (delete-file tmp-local-file)
       res)))
 

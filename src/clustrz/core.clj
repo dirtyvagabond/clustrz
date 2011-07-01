@@ -145,10 +145,15 @@
   (spit-at node (kvs-file key) (with-out-str (pr val))))
 
 (defn get-at
-  "Returns the object associated with key at node, or nil if none."
-  [node key]
-  (read-string
-    (shout node (str "cat " (kvs-file key)))))
+  ([node key not-found]
+     "Returns the object associated with key at node, or not-found if none."
+     (let [out (:out (ssh-exec node (str "cat " (kvs-file key))))]
+       (if (= 0 (.length out))
+         not-found
+         (read-string out))))
+  ([node key]
+     "Returns the object associated with key at node, or nil if none."
+     (get-at node key nil)))
 
 (defn dissoc-at [node key]
   (delete-file-at node (kvs-file key)))
@@ -284,11 +289,6 @@
 
 (defn restart-vs [node]
   (shout node "/u/apps/PRODUCTION/quartz/shared/bin/vot_restart.sh"))
-
-;;TODO: otherwise, check-oome breaks because get-at triggers an exception due to file not found;
-;;      need a good way for get-at to return nil in this case instead.
-(defn prep-oome-check [node]
-  (assoc-at node :last-seen-oome "Fri Dec 3 02:22:22 PST 2008"))
 
 (defn new-oome-vs [node oome-date-str]
   (log2 node (str "Found new oome: " oome-date-str))

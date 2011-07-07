@@ -18,4 +18,18 @@ First, define your nodes. The minimum required is the remote username and the re
 
 Now you can use various functions with that node. Let's take a look at clustrz functions, starting with the lowest level and working our way up:
 
-	> 
+The <tt>ssh-exec</tt> function let's you run an arbitrary command at a node, and get a hashmap of the results back, like so:
+
+	> (pprint (ssh-exec mynode "uptime"))
+	{:exit 0,
+ 	:out
+	 " 14:31:58 up 735 days, 14:34,  0 users,  load average: 0.54, 0.39, 0.27\n",
+	 :err ""}
+
+The <tt>shout</tt> function is a convenience function that let's you run an arbitrary command at a node, but just get back standard out. Like so:
+
+	> (shout mynode "uptime")
+	"15:31:00 up 735 days, 15:33,  0 users,  load average: 0.76, 0.69, 0.64"
+
+
+

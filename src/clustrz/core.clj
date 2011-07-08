@@ -331,7 +331,7 @@
   (jmx-type-at proc "Threading"))
 
 (defn thread-count-at [node]
-  (:ThreadCount (jmx-type-at mynode "java.lang" "Threading")))
+  (:ThreadCount (jmx-type-at node "java.lang" "Threading")))
 
 ;;
 ;; Factual/Quartz specific

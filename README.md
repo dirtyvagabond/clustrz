@@ -22,8 +22,7 @@ The <tt>ssh-exec</tt> function let's you run an arbitrary command at a node, and
 
 	> (pprint (ssh-exec mynode "uptime"))
 	{:exit 0,
- 	:out
-	 " 14:31:58 up 735 days, 14:34,  0 users,  load average: 0.54, 0.39, 0.27\n",
+ 	 :out " 14:31:58 up 735 days, 14:34,  0 users,  load average: 0.54, 0.39, 0.27\n",
 	 :err ""}
 
 The <tt>shout</tt> function is a convenience function that let's you run an arbitrary command at a node, but just get back standard out. Like so:
@@ -43,13 +42,10 @@ Note that clustrz comes with <tt>uptime-at</tt> already defined. So now we can d
 	> (uptime-at mynode)
 	"15:35:16 up 735 days, 15:37,  0 users,  load average: 0.53, 0.77, 0.69"
 
-This is cool because we've created a first class function that can be composed with other useful stuff.
-
-The <tt>exec</tt> takes a first class function, runs it against a specified node, then wraps the output of that function with extra useful information about the remote action. For example:
+This is cool because we've created a first class function that can be composed with other useful stuff. For example, the <tt>exec</tt> function takes a first class function, runs it against a specified node, then wraps the output of that function with extra useful information about the remote action. For example:
 
 	> (pprint (exec uptime-at mynode))
-	{:out
-	 "15:37:56 up 735 days, 15:40,  0 users,  load average: 0.40, 0.59, 0.63",
+	{:out "15:37:56 up 735 days, 15:40,  0 users,  load average: 0.40, 0.59, 0.63",
 	 :host "some_hostname",
 	 :time 511}
 

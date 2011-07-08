@@ -80,7 +80,12 @@ The <tt>$</tt> function runs a function over a cluster of nodes using <tt>exec</
 
 Since <tt>exec</tt> returns a well-defined hashmap, and therefore <tt>$</tt> returns a sequence of well-defined hash-maps, you can easily build on top of <tt>$</tt>.
 
-For example, imagine a function <tt>nice-report-str</tt>, that takes the output from <tt>$</tt>, and simplifies it down to a cleanly formatted textual report. Then you could do:
+For example, let's write a function <tt>nice-report-str</tt>, that takes the output from <tt>$</tt>, and simplifies it down to a cleanly formatted textual report:
+
+	> (defn nice-report-str [hashmaps]
+  	    (join "\n" (map #(str (:host %) ": " (:out %)) hashmaps)))
+
+Now we can do this:
 
 	> (println (nice-report-str ($ uptime-at mycluster)))
 	some_hostname1: 17:56:20 up 717 days,  2:26,  1 user,  load average: 0.54, 0.55, 0.55

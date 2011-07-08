@@ -140,3 +140,21 @@ There's some intriguing data there. This is just a simple hashmap structure at t
 	> (:ThreadCount (jmx-type-at mynode "java.lang" "Threading"))
 	45
 
+For convenience, let's create a first class function for getting the thread count of a remote process:
+
+	> (defn thread-count-at [node]
+	  (:ThreadCount (jmx-type-at mynode "java.lang" "Threading")))
+
+So now it's pretty convenient:
+
+	> (thread-count-at mynode)
+	45
+
+If we have a cluster properly defined, clustrz lets us do nifty things like:
+
+	> (println (nice-report-str ($ thread-count-at mycluster)))
+	some_hostname1: 45
+	some_hostname2: 39
+	some_hostname3: 18
+
+Note that clustrz comes with all these functions already defined.

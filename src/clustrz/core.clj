@@ -330,6 +330,9 @@
   "Returns the Threading mbean data for the JMX-enabled proc."
   (jmx-type-at proc "Threading"))
 
+(defn thread-count-at [node]
+  (:ThreadCount (jmx-type-at mynode "java.lang" "Threading")))
+
 ;;
 ;; Factual/Quartz specific
 ;;

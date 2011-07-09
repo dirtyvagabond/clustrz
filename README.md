@@ -87,35 +87,44 @@ Note that clustrz comes with <tt>nice-report-str</tt> already defined.
 
 ## Work with remote files and directories
 
-;; Create an entire directory path at mynode
-(mkdir-at mynode "/tmp/all/these/dirs/will/now/exist")
+   ;; Create an entire directory path at mynode
+   (mkdir-at mynode "/tmp/all/these/dirs/will/now/exist")
 
-;; Write a String to a file at mynode
-(spit-at mynode "/tmp/myfile.txt" "I work best in my hammock.\n")
+   ;; Write a String to a file at mynode
+   (spit-at mynode "/tmp/myfile.txt" "I work best in my hammock.\n")
 
-;; Append a line to the end of a file at mynode
-(append-spit-at mynode "/tmp/myfile.txt" "Emacs or bust!\n")
+   ;; Append a line to the end of a file at mynode
+   (append-spit-at mynode "/tmp/myfile.txt" "Emacs or bust!\n")
 
-;; Get the last line from a file
-(last-line mynode "/tmp/myfile.txt")
+   ;; Get the last line from a file
+   (last-line mynode "/tmp/myfile.txt")
 
-;; Get the last 3 lines from a file
-(last-lines mynode "/tmp/myfile.txt" 3)
+   ;; Get the last 3 lines from a file
+   (last-lines mynode "/tmp/myfile.txt" 3)
 
-;; Delete a single file
-(delete-file-at mynode "/tmp/myfile.txt")
+   ;; Delete a single file
+   (delete-file-at mynode "/tmp/myfile.txt")
 
 ## Treat nodes like hashmaps
 
 You can treat your clustrz nodes as first class hashmaps. Under the covers, your key value pairs are stored on the remote node.
 
-;; Associate a key and value
-(assoc-at mynode :mykey "some_value")
+    ;; Associate a key and value
+    (assoc-at mynode :mykey "some_value")
 
-;; Get the value associated with a key
-(get-at mynode :mykey)
+    ;; Get the value associated with a key
+    (get-at mynode :mykey)
 
-The values you associate can be any Clojure structure that serializes as a String. So you can store complicated structures of numbers, Strings, hashmaps, arrays, etc.
+You can associate any values that Clojure knows how to serialize. For example:
+
+    > (assoc-at mynode :mykey
+        {:myarray [1 "two" 3.3], :myset #{"A" \b :three}})
+    > (get-at mynode :mykey)
+    {:myarray [1 "two" 3.3], :myset #{"A" \b :three}}
+
+And of course you can disassociate:
+
+    > (dissoc-at mynode :mykey)
 
 ## Talk JMX
 

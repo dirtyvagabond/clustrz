@@ -107,7 +107,7 @@ Note that clustrz comes with <tt>nice-report-str</tt> already defined.
 
 ## Treat nodes like hashmaps
 
-You can treat your clustrz nodes as first class hashmaps. Under the covers, your key value pairs are stored on the remote node.
+You can treat your clustrz nodes as first class hashmaps. Under the covers, your key value pairs are stored on the remote node. This can be handy if you want to persist specific informatin on a per-node basis, such as node state information.
 
     ;; Associate a key and value
     (assoc-at mynode :mykey "some_value")
@@ -133,6 +133,8 @@ clustrz comes with functions for interacting with a remote process via JMX. To u
 	> (def mynode {:host "some_hostname1",
 	               :user "some_user",
 	               :jmx {:port 8021, :user "monitorRole", :pwd "sequestastronomy"}}
+
+(This assumes you have a Java process running at some_hostname1, configured to support JMX on port 8021 with a password of "sequestastronomy". This must be done at process start time -- see Java's JMX docs for more details.)
 
 Now let's see what mbeans are available at our remote process:
 

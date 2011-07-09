@@ -213,7 +213,9 @@ Note that clustrz comes with all these functions already defined.
 ## FAQ
 
 **Q:** OMG, aren't you just reinventing Capistrano || Pallet || Puppet || Cheff || Crane || Monit || Nagios?
+
 **A:** Maybe, but sort of maybe not. The main motivation was to create a simple but flexible library that lets you do high level node management in a Lispy way. For example, if you want to build your own custom kind of "autopilot" application that knows how to deploy, monitor, and manage remote processes, perhaps clustrz would be useful to you. Or if you want an agile, Lispy REPL for adhoc inspection and maintenance of entire clusters, perhaps clustrz would be useful to you.
 
 **Q:** What needs to be installed on the target node? Do I need to install Java or Clojure?
+
 **A:** You don't need to install Java or Clojure. The remote node must be a Linux environment, with bash available, and with your public key in ~/.ssh/authorized_keys for the user you specify.

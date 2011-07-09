@@ -90,6 +90,14 @@ Note that clustrz comes with <tt>nice-report-str</tt> already defined.
 	;; Create an entire directory path at mynode
 	(mkdir-at mynode "/tmp/all/these/dirs/will/now/exist")
 
+	;; Copy a local file to mynode
+  (copy-to "/tmp/my_local_file.txt" mynode "/tmp/new_remote_file.txt")
+
+	;; Copy local files toa folder on mynode
+  (copy-files-to
+	  ["/tmp/local_file1.txt" "/tmp/local_file2.txt" "/tmp/local_file3.txt"]
+	  mynode "/tmp/remote_subdir")
+
 	;; Write a String to a file at mynode
 	(spit-at mynode "/tmp/myfile.txt" "I work best in my hammock.\n")
 

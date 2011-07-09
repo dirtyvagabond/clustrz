@@ -87,23 +87,23 @@ Note that clustrz comes with <tt>nice-report-str</tt> already defined.
 
 ## Work with remote files and directories
 
-   ;; Create an entire directory path at mynode
-   (mkdir-at mynode "/tmp/all/these/dirs/will/now/exist")
+	;; Create an entire directory path at mynode
+	(mkdir-at mynode "/tmp/all/these/dirs/will/now/exist")
 
-   ;; Write a String to a file at mynode
-   (spit-at mynode "/tmp/myfile.txt" "I work best in my hammock.\n")
+	;; Write a String to a file at mynode
+	(spit-at mynode "/tmp/myfile.txt" "I work best in my hammock.\n")
 
-   ;; Append a line to the end of a file at mynode
-   (append-spit-at mynode "/tmp/myfile.txt" "Emacs or bust!\n")
+	;; Append a line to the end of a file at mynode
+	(append-spit-at mynode "/tmp/myfile.txt" "Emacs or bust!\n")
 
-   ;; Get the last line from a file
-   (last-line mynode "/tmp/myfile.txt")
+	;; Get the last line from a file
+	(last-line mynode "/tmp/myfile.txt")
 
-   ;; Get the last 3 lines from a file
-   (last-lines mynode "/tmp/myfile.txt" 3)
+	;; Get the last 3 lines from a file
+	(last-lines mynode "/tmp/myfile.txt" 3)
 
-   ;; Delete a single file
-   (delete-file-at mynode "/tmp/myfile.txt")
+	;; Delete a single file
+	(delete-file-at mynode "/tmp/myfile.txt")
 
 ## Treat nodes like hashmaps
 

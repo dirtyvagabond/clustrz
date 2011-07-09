@@ -85,11 +85,43 @@ Now we can do this:
 
 Note that clustrz comes with <tt>nice-report-str</tt> already defined.
 
-## Talking JMX
+## Work with remote files and directories
+
+;; Create an entire directory path at mynode
+(mkdir-at mynode "/tmp/all/these/dirs/will/now/exist")
+
+;; Write a String to a file at mynode
+(spit-at mynode "/tmp/myfile.txt" "I work best in my hammock.\n")
+
+;; Append a line to the end of a file at mynode
+(append-spit-at mynode "/tmp/myfile.txt" "Emacs or bust!\n")
+
+;; Get the last line from a file
+(last-line mynode "/tmp/myfile.txt")
+
+;; Get the last 3 lines from a file
+(last-lines mynode "/tmp/myfile.txt" 3)
+
+;; Delete a single file
+(delete-file-at mynode "/tmp/myfile.txt")
+
+## Treat nodes like hashmaps
+
+You can treat your clustrz nodes as first class hashmaps. Under the covers, your key value pairs are stored on the remote node.
+
+;; Associate a key and value
+(assoc-at mynode :mykey "some_value")
+
+;; Get the value associated with a key
+(get-at mynode :mykey)
+
+The values you associate can be any Clojure structure that serializes as a String. So you can store complicated structures of numbers, Strings, hashmaps, arrays, etc.
+
+## Talk JMX
 
 clustrz comes with functions for interacting with a remote process via JMX. To use these functions you must define your nodes to include some additional JMX configuration:
 
-	> (def dynode {:host "some_hostname1",
+	> (def mynode {:host "some_hostname1",
 	               :user "some_user",
 	               :jmx {:port 8021, :user "monitorRole", :pwd "sequestastronomy"}}
 
@@ -143,7 +175,7 @@ There's some intriguing data there. This is just a simple hashmap structure at t
 For convenience, let's create a first class function for getting the thread count of a remote process:
 
 	> (defn thread-count-at [node]
-	  (:ThreadCount (jmx-type-at node "java.lang" "Threading")))
+	    (:ThreadCount (jmx-type-at node "java.lang" "Threading")))
 
 So now it's pretty convenient:
 

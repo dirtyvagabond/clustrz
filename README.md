@@ -146,7 +146,7 @@ clustrz comes with functions for interacting with a remote process via JMX. To u
 
 Now let's see what mbeans are available at our remote process:
 
-	> (print (jmx-names mynode))
+	> (pprint (jmx-names mynode))
 	#{#<ObjectName java.lang:type=GarbageCollector,name=ParNew>
 	  #<ObjectName java.lang:type=Compilation>
 	  #<ObjectName java.lang:type=MemoryPool,name=Par Survivor Space>
@@ -212,7 +212,7 @@ Note that clustrz comes with all these functions already defined.
 
 ## FAQ
 
-**Q:** OMG, aren't you just reinventing Capistrano || Pallet || Puppet || Cheff || Crane || Monit || Nagios?
+**Q:** Aren't you just reinventing Capistrano or Pallet or Puppet of Chef or Crane or Monit or Nagios?
 
 **A:** Maybe, but sort of maybe not. The main motivation was to create a simple but flexible library that lets you do high level node management in a Lispy way. For example, if you want to build your own custom kind of "autopilot" application that knows how to deploy, monitor, and manage remote processes, perhaps clustrz would be useful to you. Or if you want an agile, Lispy REPL for adhoc inspection and maintenance of entire clusters, perhaps clustrz would be useful to you.
 
